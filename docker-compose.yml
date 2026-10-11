@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-spendguard}
+      POSTGRES_USER: ${POSTGRES_USER:-spendguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spendguard_dev_only}
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spendguard} -d ${POSTGRES_DB:-spendguard}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  ml-service:
+    build: ./ml_service
+    ports: ["8000:8000"]
+  backend:
+    build: ./backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-spendguard}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-spendguard}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-spendguard_dev_only}
+      ML_SERVICE_URL: http://ml-service:8000
+      REDIS_HOST: redis
+    ports: ["8080:8080"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      ml-service: {condition: service_started}
+      redis: {condition: service_started}
+  frontend:
+    build: ./frontend
+    ports: ["5173:5173"]
+    environment:
+      VITE_API_URL: http://localhost:8080
+      VITE_WS_URL: http://localhost:8080/ws
+    depends_on: [backend]
+volumes:
+  pgdata:
